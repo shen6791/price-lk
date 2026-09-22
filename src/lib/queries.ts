@@ -39,18 +39,46 @@ export async function getProducts(search?: string): Promise<ProductListItem[]> {
   });
 }
 
-// Searches the DB, and also scrapes seller sites live for this query so
-// results include prices we've never stored before. Scraped results are
-// persisted (see upsertScrapedResults) so the next search / product page is
-// instant and has history.
-function slugify(s: string) {
-  return s
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)/g, "");
+// Ranks candidates by trigram/word similarity to the query (see
+// supabase/migrations/0001_search_ranking.sql) so "iphone 11" surfaces
+// iPhone 11 listings first instead of an arbitrary-order substring match
+// that mixes in loosely related accessories.
+async function getRankedProducts(query: string, limit = 40): Promise<ProductListItem[]> {
+  const supabase = await createClient();
+  const { data: ranked } = await supabase.rpc("search_products_ranked", {
+    search_query: query,
+    match_limit: limit,
+  });
+  if (!ranked || ranked.length === 0) return [];
+
+  const rank = new Map<string, number>(ranked.map((r: any, i: number) => [r.id, i]));
+  const { data } = await supabase
+    .from("products")
+    .select("*, prices(price, in_stock)")
+    .in(
+      "id",
+      ranked.map((r: any) => r.id)
+    );
+
+  return (data ?? [])
+    .sort((a: any, b: any) => (rank.get(a.id) ?? 999) - (rank.get(b.id) ?? 999))
+    .map((p: any) => {
+      const inStockPrices = (p.prices ?? []).filter((pr: any) => pr.in_stock);
+      const pool = inStockPrices.length > 0 ? inStockPrices : p.prices ?? [];
+      const lowest = pool.length > 0 ? Math.min(...pool.map((pr: any) => pr.price)) : null;
+      return {
+        ...p,
+        prices: undefined,
+        lowest_price: lowest,
+        seller_count: p.prices?.length ?? 0,
+      } as ProductListItem;
+    });
 }
 
+// Scrapes seller sites live for this query so results include prices we've
+// never stored before (persisted via upsertScrapedResults, so the next
+// search / product page is instant and has history), then returns the DB's
+// best matches for the query — now including whatever was just scraped.
 export async function searchProducts(query: string): Promise<{
   products: ProductListItem[];
   scrapedCount: number;
@@ -58,28 +86,7 @@ export async function searchProducts(query: string): Promise<{
   const scraped = await scrapeAllSellers(query);
   await upsertScrapedResults(scraped);
 
-  const scrapedSlugs = [...new Set(scraped.map((r) => slugify(r.productName)))].filter(Boolean);
-
-  const supabase = await createClient();
-  let dbQuery = supabase.from("products").select("*, prices(price, in_stock)");
-  dbQuery =
-    scrapedSlugs.length > 0
-      ? dbQuery.or(`name.ilike.%${query}%,slug.in.(${scrapedSlugs.join(",")})`)
-      : dbQuery.ilike("name", `%${query}%`);
-  const { data } = await dbQuery;
-
-  const products = (data ?? []).map((p: any) => {
-    const inStockPrices = (p.prices ?? []).filter((pr: any) => pr.in_stock);
-    const pool = inStockPrices.length > 0 ? inStockPrices : p.prices ?? [];
-    const lowest = pool.length > 0 ? Math.min(...pool.map((pr: any) => pr.price)) : null;
-    return {
-      ...p,
-      prices: undefined,
-      lowest_price: lowest,
-      seller_count: p.prices?.length ?? 0,
-    } as ProductListItem;
-  });
-
+  const products = await getRankedProducts(query);
   return { products, scrapedCount: scraped.length };
 }
 

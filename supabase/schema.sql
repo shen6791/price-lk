@@ -1,6 +1,7 @@
 -- Price-LK schema
 
 create extension if not exists "pgcrypto";
+create extension if not exists pg_trgm;
 
 create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
@@ -76,3 +77,26 @@ create policy "public read products" on products for select using (true);
 create policy "public read prices" on prices for select using (true);
 
 create policy "anyone can create alert" on price_alerts for insert with check (true);
+
+-- Relevance-ranked search: scores candidates by trigram/word similarity to
+-- the query so e.g. "iphone 11" surfaces iPhone 11 listings before loosely
+-- related accessories. See migrations/0001_search_ranking.sql for notes.
+create index if not exists idx_products_name_trgm on products using gin (name gin_trgm_ops);
+
+create or replace function search_products_ranked(search_query text, match_limit int default 40)
+returns table (id uuid, score real)
+language sql
+stable
+as $$
+  select p.id,
+    greatest(
+      similarity(p.name, search_query),
+      word_similarity(search_query, p.name)
+    ) as score
+  from products p
+  where p.name ilike '%' || search_query || '%'
+     or p.name % search_query
+     or search_query <% p.name
+  order by score desc, length(p.name) asc
+  limit match_limit;
+$$;
