@@ -1,36 +1,42 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# price.lk
 
-## Getting Started
+Sri Lankan price comparison site — MVP. Next.js (App Router) + Supabase.
 
-First, run the development server:
+## Setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Create a Supabase project at [supabase.com](https://supabase.com).
+2. In the Supabase SQL editor, run `supabase/schema.sql`, then `supabase/seed.sql`.
+   The seed inserts 5 real products with prices pulled live from Celltronics.lk,
+   SimplyTek.lk and Wasi.lk on 2026-09-22, so you have something to look at immediately.
+3. Copy `.env.local.example` to `.env.local` and fill in your project's URL and keys
+   (Project Settings → API), plus an `ADMIN_PASSWORD` of your choice.
+4. `npm install`
+5. `npm run dev` and open http://localhost:3000. Admin dashboard is at `/admin`
+   (logs in with `ADMIN_PASSWORD`).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## What's here
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- Homepage with search (`src/app/page.tsx`)
+- Product detail + price comparison table (`src/app/product/[slug]/page.tsx`)
+- Admin dashboard at `/admin` (password-gated via `ADMIN_PASSWORD` cookie) to add
+  sellers, add products, and record prices by hand — writes go through the
+  Supabase service-role client so RLS stays locked down for everyone else
+  (`src/app/admin/`)
+- Schema: categories, sellers, products, prices (with `source`/`status` for
+  admin-entered vs. user-submitted vs. scraped), price_alerts (`supabase/schema.sql`)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Not built yet (next steps, roughly in priority order)
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. **User price submission** flow (product, seller, price, screenshot, link) with
+   a verification queue — the `status` column already supports this; needs a
+   public form + an admin "pending submissions" review screen.
+2. **Automated scrapers** per retailer. Each retailer has a different HTML
+   structure, so this is a scraper-per-site job, not a generic one. Good
+   candidates based on today's research: Celltronics.lk, SimplyTek.lk, Wasi.lk,
+   Buyabans.com, Daraz.lk. Check each site's robots.txt/ToS before scraping.
+3. **Price history + alerts** — the `prices` table already stores every price
+   as its own row keyed by `recorded_at`, so a history chart is a group-by
+   away; `price_alerts` table + a cron job (Supabase Edge Function) to check
+   and email/notify when a target price is hit.
+4. Category pages, product images, "price dropped this week" badges, product
+   edit/delete in admin (currently add-only).
