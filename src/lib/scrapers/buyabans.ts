@@ -2,7 +2,7 @@ import { fetchWithTimeout } from "./fetch";
 import type { ScrapedPrice } from "./types";
 
 type SearchResponse = {
-  results?: { product_name: string; product_url: string }[];
+  results?: { product_id: number; product_name: string; product_url: string }[];
 };
 
 // Buyabans' search endpoint only returns names/slugs, not prices — each
@@ -23,18 +23,32 @@ export async function scrapeBuyabans(query: string): Promise<ScrapedPrice[]> {
       if (!res.ok) return null;
       const html = await res.text();
 
-      const priceMatch = html.match(/&quot;special_price&quot;:&quot;([\d.]+)&quot;/) ??
-        html.match(/&quot;price&quot;:&quot;([\d.]+)&quot;/);
+      // The page embeds pricing for the main product AND for bundled
+      // freebie/add-on items (e.g. a free backpack with a laptop), each in
+      // their own JSON blob — grabbing the first price on the page can
+      // silently pick up the freebie's price instead of the actual
+      // product's (verified against a real listing: a laptop's page led
+      // with a bundled bag's Rs. 3,530 price ahead of the laptop's real
+      // Rs. 189,990). The main product's own blob starts at
+      // `<product-component :product="{"id":<id>`, and its accurate price
+      // lives in a doubly-escaped `web_price_params.deal_price` field
+      // within that block — anchor there instead of scanning the page.
+      const marker = `product-component :product="{&quot;id&quot;:${c.product_id},`;
+      const anchorIdx = html.indexOf(marker);
+      if (anchorIdx === -1) return null;
+      const productBlock = html.slice(anchorIdx, anchorIdx + 3000);
+
+      const priceMatch = productBlock.match(/deal_price\\&quot;:(\d+(?:\.\d+)?)/);
       const price = priceMatch ? parseFloat(priceMatch[1]) : null;
       if (!price) return null;
 
-      const stockMatch = html.match(/&quot;inventory&quot;:&quot;(\d+)&quot;/);
-      const inStock = stockMatch ? parseInt(stockMatch[1], 10) > 0 : true;
-
+      // Stock status isn't reliably present in this block (see comment
+      // above) — Buyabans listings default to in-stock rather than risk a
+      // false "out of stock" from a field we can't consistently locate.
       return {
         productName: c.product_name.trim(),
         price,
-        inStock,
+        inStock: true as boolean,
         productUrl,
         sellerSlug: "buyabans",
       } satisfies ScrapedPrice;
