@@ -44,3 +44,6 @@ supabase/.temp/
 
 .vercel
 .env*
+
+# scratch files used while developing scrapers
+.scratch/
