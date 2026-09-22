@@ -18,19 +18,24 @@ Sri Lankan price comparison site — MVP. Next.js (App Router) + Supabase.
 
 The homepage is a pure live lookup: type a product, and the server scrapes
 Celltronics.lk, Wasi.lk, SimplyTek.lk and Buyabans.com for it on the spot
-(`src/lib/scrapers/`), groups whatever it finds by normalized product name,
-scores each group's relevance to the query, and renders a price/availability
-comparison table directly — no database read or write involved
-(`src/lib/live-search.ts`). Nothing is cached, so the same search two minutes
-apart hits the seller sites again and can show a different price.
+(`src/lib/scrapers/`), scores every listing's relevance to the query, and
+renders one flat, sortable table — every price from every seller as its own
+row, not grouped into per-product cards — with client-side sort (best match
+/ price low-high / price high-low) and an in-stock filter
+(`src/lib/live-search.ts`, `src/app/ResultsView.tsx`). No database read or
+write is involved. Nothing is cached, so the same search two minutes apart
+hits the seller sites again and can show a different price.
 
-Relevance scoring (`scoreMatch` in `live-search.ts`) exists because seller's
+Relevance scoring (`scoreMatch` in `live-search.ts`) exists because sellers'
 own search endpoints are looser than what you'd want here — searching
 "apple se 2" on a seller site can surface completely unrelated products
-that happen to share a word. A listing needs at least half the query's
+that happen to share a word. A listing needs at least one of the query's
 significant words to match (short words like "se" require an exact match,
 not just substring containment — "se" is inside "meSsEnger") or it's
-dropped rather than shown at the bottom.
+dropped entirely; anything that does match stays visible and sorts by
+relevance rather than being hidden, which matters most for something like a
+discontinued phone model that no tracked seller stocks anymore — you still
+see the closest available alternatives instead of an empty page.
 
 Adding another retailer: drop a new file in `src/lib/scrapers/` that returns
 `ScrapedPrice[]`, and add it to `scrapeAllSellers` in `scrapers/index.ts`
@@ -52,10 +57,10 @@ browsing without a real taxonomy; a proper fix needs category metadata per
 scraped listing (most sites expose this in their own category URLs/breadcrumbs,
 which none of the current scrapers extract yet).
 
-**Known limitation:** grouping is by normalized title, so the same physical
+**Known limitation:** each listing is its own row, so the same physical
 phone phrased differently by two sites ("Apple iPhone 15 128GB" vs. "Apple
-iPhone 15 – Apple Care Warranty") can still show as two separate cards
-instead of one with two sellers. Real product matching (fuzzy title
+iPhone 15 – Apple Care Warranty") shows as two separate rows rather than
+being recognized as the same product. Real product matching (fuzzy title
 matching, or a canonical catalog) would fix this but is real work — flagged
 below.
 
@@ -76,7 +81,8 @@ catalog ever needs its own ranked search UI.
 
 ## Not built yet (next steps, roughly in priority order)
 
-1. **Product matching across sellers** in live search — see "Known limitation" above.
+1. **Product matching across sellers** — collapse rows that are the same
+   physical product into one, see "Known limitation" above.
 2. **More retailers** — Daraz.lk (see above), Kapruka, Softlogic, and others.
    "Every listing in Sri Lanka" isn't something any scraper set can
    literally promise — this only ever covers sites it has a scraper for.

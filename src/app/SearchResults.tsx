@@ -2,12 +2,12 @@ import { liveSearch } from "@/lib/live-search";
 import ResultsView from "./ResultsView";
 
 export default async function SearchResults({ q }: { q: string }) {
-  let groups: Awaited<ReturnType<typeof liveSearch>>["groups"] = [];
+  let results: Awaited<ReturnType<typeof liveSearch>>["results"] = [];
   let listingCount = 0;
   let failed = false;
 
   try {
-    ({ groups, listingCount } = await liveSearch(q));
+    ({ results, listingCount } = await liveSearch(q));
   } catch {
     failed = true;
   }
@@ -33,12 +33,12 @@ export default async function SearchResults({ q }: { q: string }) {
         </p>
       </div>
 
-      {groups.length === 0 ? (
+      {results.length === 0 ? (
         <p className="text-zinc-500">
           No products found — try a different spelling or a more general term.
         </p>
       ) : (
-        <ResultsView groups={groups} />
+        <ResultsView results={results} />
       )}
     </>
   );
