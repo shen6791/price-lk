@@ -89,10 +89,8 @@ language sql
 stable
 as $$
   select p.id,
-    greatest(
-      similarity(p.name, search_query),
-      word_similarity(search_query, p.name)
-    ) as score
+    (case when p.name ilike '%' || search_query || '%' then 2 else 0 end)
+      + greatest(similarity(p.name, search_query), word_similarity(search_query, p.name)) as score
   from products p
   where p.name ilike '%' || search_query || '%'
      or p.name % search_query
