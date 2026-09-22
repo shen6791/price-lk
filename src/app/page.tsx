@@ -17,7 +17,7 @@ export default async function Home({
             price<span className="text-blue-600">.lk</span>
           </Link>
           <p className="mt-1 text-sm text-zinc-500">
-            Know the real price before you buy — compare Sri Lankan retailers in one place.
+            Type a product — we browse Sri Lankan sellers live and show you the price.
           </p>
           <form action="/" className="mt-4">
             <div className="relative">
@@ -25,7 +25,7 @@ export default async function Home({
                 type="text"
                 name="q"
                 defaultValue={q}
-                placeholder="Search for a phone, laptop, or accessory… e.g. Apple iPhone 15"
+                placeholder="e.g. Apple iPhone SE 2"
                 className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 pr-24 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
@@ -37,34 +37,39 @@ export default async function Home({
             </div>
           </form>
           <p className="mt-2 text-xs text-zinc-400">
-            Every search checks live prices across Sri Lankan sellers, not just what&apos;s already in our database.
+            Nothing is pre-loaded — every search checks seller sites live, on the spot.
           </p>
         </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-8">
-        <Suspense key={q ?? ""} fallback={<SearchFallback q={q} />}>
-          <SearchResults q={q} />
-        </Suspense>
+        {q ? (
+          <Suspense key={q} fallback={<SearchFallback q={q} />}>
+            <SearchResults q={q} />
+          </Suspense>
+        ) : (
+          <p className="text-sm text-zinc-500">
+            Search for a phone, laptop, or accessory above to see live prices from Sri Lankan
+            sellers.
+          </p>
+        )}
       </main>
     </div>
   );
 }
 
-function SearchFallback({ q }: { q?: string }) {
+function SearchFallback({ q }: { q: string }) {
   return (
     <div>
       <h2 className="mb-4 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-        {q ? `Results for "${q}"` : "All products"}
+        Results for &quot;{q}&quot;
       </h2>
-      {q && (
-        <div className="flex items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4">
-          <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-          <p className="text-sm text-zinc-500">
-            Checking Celltronics, Wasi.lk and SimplyTek for &quot;{q}&quot;…
-          </p>
-        </div>
-      )}
+      <div className="flex items-center gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 p-4">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+        <p className="text-sm text-zinc-500">
+          Browsing Celltronics, Wasi.lk and SimplyTek for &quot;{q}&quot;…
+        </p>
+      </div>
     </div>
   );
 }

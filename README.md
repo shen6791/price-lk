@@ -5,62 +5,69 @@ Sri Lankan price comparison site — MVP. Next.js (App Router) + Supabase.
 ## Setup
 
 1. Create a Supabase project at [supabase.com](https://supabase.com).
-2. In the Supabase SQL editor, run `supabase/schema.sql`, then `supabase/seed.sql`.
-   The seed inserts 5 real products with prices pulled live from Celltronics.lk,
-   SimplyTek.lk and Wasi.lk on 2026-09-22, so you have something to look at immediately.
+2. In the Supabase SQL editor, run `supabase/schema.sql`. (`supabase/seed.sql`
+   is optional — it's only used by the admin-managed catalog, see below; the
+   homepage search doesn't need it.)
 3. Copy `.env.local.example` to `.env.local` and fill in your project's URL and keys
    (Project Settings → API), plus an `ADMIN_PASSWORD` of your choice.
 4. `npm install`
 5. `npm run dev` and open http://localhost:3000. Admin dashboard is at `/admin`
    (logs in with `ADMIN_PASSWORD`).
 
-## What's here
+## How search works
 
-- Homepage with search (`src/app/page.tsx`)
-- Product detail + price comparison table (`src/app/product/[slug]/page.tsx`)
-- Admin dashboard at `/admin` (password-gated via `ADMIN_PASSWORD` cookie) to add
-  sellers, add products, and record prices by hand — writes go through the
-  Supabase service-role client so RLS stays locked down for everyone else
-  (`src/app/admin/`)
-- Schema: categories, sellers, products, prices (with `source`/`status` for
-  admin-entered vs. user-submitted vs. scraped), price_alerts (`supabase/schema.sql`)
+The homepage is a pure live lookup: type a product, and the server scrapes
+Celltronics.lk, Wasi.lk and SimplyTek.lk for it on the spot
+(`src/lib/scrapers/`), groups whatever it finds by normalized product name,
+scores each group's relevance to the query, and renders a price/availability
+comparison table directly — no database read or write involved
+(`src/lib/live-search.ts`). Nothing is cached, so the same search two minutes
+apart hits the seller sites again and can show a different price.
 
-## Live search (scrapers)
-
-Searching the homepage now does two things: queries what's already in the
-database, and — in parallel — live-scrapes Celltronics.lk, Wasi.lk and
-SimplyTek.lk for the same term (`src/lib/scrapers/`). Results are normalized
-and upserted into `products`/`prices` (`src/lib/scrapers/upsert.ts`), so:
-
-- A search someone's never made before still returns real prices, pulled live.
-- A repeat search doesn't spam the `prices` table — a new row is only written
-  when the price changed or the last check for that product/seller is more
-  than 6h old (`STALE_MS` in `upsert.ts`).
-- Every scraped listing becomes its own `products` row keyed by its slugified
-  title. Different sites phrase the same phone differently (e.g. "Apple
-  iPhone 15 128GB" vs. "Apple iPhone 15 – Apple Care Warranty"), so the same
-  physical product can currently show up as two separate cards instead of
-  one with two sellers. Fixing that needs real product matching (fuzzy title
-  match, or a canonical product catalog) — flagged as the top follow-up below.
+Relevance scoring (`scoreMatch` in `live-search.ts`) exists because seller's
+own search endpoints are looser than what you'd want here — searching
+"apple se 2" on a seller site can surface completely unrelated products
+that happen to share a word. A listing needs at least half the query's
+significant words to match (short words like "se" require an exact match,
+not just substring containment — "se" is inside "meSsEnger") or it's
+dropped rather than shown at the bottom.
 
 Adding another retailer: drop a new file in `src/lib/scrapers/` that returns
-`ScrapedPrice[]`, add it to `scrapeAllSellers` in `scrapers/index.ts`, and add
-the seller to the `sellers` table. Daraz.lk is the obvious next one but is a
-JS-rendered SPA, so it needs a different approach (their internal API, or a
-headless browser) rather than a plain HTML fetch.
+`ScrapedPrice[]`, and add it to `scrapeAllSellers` in `scrapers/index.ts`.
+Daraz.lk is the obvious next one but is a JS-rendered SPA, so it needs a
+different approach (their internal API, or a headless browser) rather than
+a plain HTML fetch.
+
+**Known limitation:** grouping is by normalized title, so the same physical
+phone phrased differently by two sites ("Apple iPhone 15 128GB" vs. "Apple
+iPhone 15 – Apple Care Warranty") can still show as two separate cards
+instead of one with two sellers. Real product matching (fuzzy title
+matching, or a canonical catalog) would fix this but is real work — flagged
+below.
+
+## Admin-managed catalog (separate from search)
+
+`/admin` (password-gated via `ADMIN_PASSWORD`) lets you hand-add sellers,
+products, and prices into Supabase — this is a separate, persistent catalog
+from the live search above, and only reachable by visiting a product's own
+page directly; it does not feed into or get fed by the homepage search.
+Useful if you want a small set of products with guaranteed-accurate,
+manually-verified prices. Schema: categories, sellers, products, prices
+(with `source`/`status` for admin-entered vs. user-submitted vs. scraped),
+price_alerts (`supabase/schema.sql`). `supabase/migrations/` has a
+trigram-based ranked-search Postgres function (`search_products_ranked`)
+that was built for this catalog before search moved to the pure live-lookup
+model above — not currently called from the app, but there if the admin
+catalog ever needs its own ranked search UI.
 
 ## Not built yet (next steps, roughly in priority order)
 
-1. **Product matching across sellers** — see above; without this, the same
-   phone from two sites often shows as two products instead of one row with
-   two prices, which undercuts the whole "compare in one place" pitch.
-2. **User price submission** flow (product, seller, price, screenshot, link) with
-   a verification queue — the `status` column already supports this; needs a
-   public form + an admin "pending submissions" review screen.
-3. **More retailers** — Daraz.lk, Buyabans.com, and others. See "Live search" above.
-4. **Price history + alerts** — the `prices` table already stores every price
-   as its own row keyed by `recorded_at`, so a history chart is a group-by
-   away; `price_alerts` table + a cron job (Supabase Edge Function) to check
-   and email/notify when a target price is hit.
-5. Category pages, product images, "price dropped this week" badges, product
-   edit/delete in admin (currently add-only).
+1. **Product matching across sellers** in live search — see "Known limitation" above.
+2. **More retailers** — Daraz.lk, Buyabans.com, and others.
+3. Decide what the admin catalog is *for* going forward — right now it's
+   disconnected from what visitors actually search, which is confusing positioning.
+   Either wire it back into search as a fallback/cache layer, or repurpose it
+   (e.g. a curated "editor's picks" section) so it earns its place.
+4. Category pages, "price dropped this week" badges — these need some form
+   of persistence (a cache layer, or the admin catalog wired back in) since
+   pure live lookup has nothing to compare against over time.
