@@ -4,8 +4,31 @@ function formatLKR(n: number) {
   return `Rs. ${n.toLocaleString("en-LK", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 }
 
+const SELLER_NAMES: Record<string, string> = {
+  celltronics: "Celltronics.lk",
+  wasi: "Wasi.lk",
+  simplytek: "SimplyTek",
+  buyabans: "Buyabans",
+};
+
 export default async function SearchResults({ q }: { q: string }) {
-  const { groups, listingCount } = await liveSearch(q);
+  let groups: Awaited<ReturnType<typeof liveSearch>>["groups"] = [];
+  let listingCount = 0;
+  let failed = false;
+
+  try {
+    ({ groups, listingCount } = await liveSearch(q));
+  } catch {
+    failed = true;
+  }
+
+  if (failed) {
+    return (
+      <p className="text-zinc-500">
+        Couldn&apos;t reach seller sites just now — please try searching again in a moment.
+      </p>
+    );
+  }
 
   return (
     <>
@@ -44,7 +67,8 @@ export default async function SearchResults({ q }: { q: string }) {
                   </span>
                 </div>
 
-                <table className="mt-3 w-full text-sm">
+                <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[420px] text-sm">
                   <thead className="text-left text-zinc-500">
                     <tr>
                       <th className="py-1 font-medium">Seller</th>
@@ -56,8 +80,8 @@ export default async function SearchResults({ q }: { q: string }) {
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-900">
                     {sorted.map((l, i) => (
                       <tr key={i}>
-                        <td className="py-1.5 capitalize text-zinc-700 dark:text-zinc-300">
-                          {l.sellerSlug}
+                        <td className="py-1.5 text-zinc-700 dark:text-zinc-300">
+                          {SELLER_NAMES[l.sellerSlug] ?? l.sellerSlug}
                         </td>
                         <td className="py-1.5 text-zinc-900 dark:text-zinc-100">
                           {formatLKR(l.price)}
@@ -83,6 +107,7 @@ export default async function SearchResults({ q }: { q: string }) {
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             );
           })}

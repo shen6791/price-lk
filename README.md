@@ -17,7 +17,7 @@ Sri Lankan price comparison site — MVP. Next.js (App Router) + Supabase.
 ## How search works
 
 The homepage is a pure live lookup: type a product, and the server scrapes
-Celltronics.lk, Wasi.lk and SimplyTek.lk for it on the spot
+Celltronics.lk, Wasi.lk, SimplyTek.lk and Buyabans.com for it on the spot
 (`src/lib/scrapers/`), groups whatever it finds by normalized product name,
 scores each group's relevance to the query, and renders a price/availability
 comparison table directly — no database read or write involved
@@ -33,10 +33,24 @@ not just substring containment — "se" is inside "meSsEnger") or it's
 dropped rather than shown at the bottom.
 
 Adding another retailer: drop a new file in `src/lib/scrapers/` that returns
-`ScrapedPrice[]`, and add it to `scrapeAllSellers` in `scrapers/index.ts`.
-Daraz.lk is the obvious next one but is a JS-rendered SPA, so it needs a
+`ScrapedPrice[]`, and add it to `scrapeAllSellers` in `scrapers/index.ts`
+(and `SELLERS`, and `SELLER_NAMES` in `SearchResults.tsx`). Daraz.lk is the
+obvious next one but is a JS-rendered SPA behind Cloudflare, so it needs a
 different approach (their internal API, or a headless browser) rather than
 a plain HTML fetch.
+
+## Categories
+
+There's no product taxonomy in a database, so "browse by category" is
+implemented as chips that link to a pre-filled broad search (e.g. "Phones"
+→ `/?q=mobile phone`) reusing the exact same live-search pipeline
+(`src/lib/categories.ts`). This works well for narrow, well-chosen terms but
+degrades for broad ones — a single ambiguous word like "smartphone" pulls in
+accessories that merely mention it (camera gimbals, smart doorbells). Tuned
+the category terms to reduce this, but it's inherent to keyword-based
+browsing without a real taxonomy; a proper fix needs category metadata per
+scraped listing (most sites expose this in their own category URLs/breadcrumbs,
+which none of the current scrapers extract yet).
 
 **Known limitation:** grouping is by normalized title, so the same physical
 phone phrased differently by two sites ("Apple iPhone 15 128GB" vs. "Apple
@@ -63,11 +77,14 @@ catalog ever needs its own ranked search UI.
 ## Not built yet (next steps, roughly in priority order)
 
 1. **Product matching across sellers** in live search — see "Known limitation" above.
-2. **More retailers** — Daraz.lk, Buyabans.com, and others.
-3. Decide what the admin catalog is *for* going forward — right now it's
+2. **More retailers** — Daraz.lk (see above), Kapruka, Softlogic, and others.
+   "Every listing in Sri Lanka" isn't something any scraper set can
+   literally promise — this only ever covers sites it has a scraper for.
+3. **Real categories** — see "Categories" above.
+4. Decide what the admin catalog is *for* going forward — right now it's
    disconnected from what visitors actually search, which is confusing positioning.
    Either wire it back into search as a fallback/cache layer, or repurpose it
    (e.g. a curated "editor's picks" section) so it earns its place.
-4. Category pages, "price dropped this week" badges — these need some form
+5. "Price dropped this week" badges, price history — these need some form
    of persistence (a cache layer, or the admin catalog wired back in) since
    pure live lookup has nothing to compare against over time.
