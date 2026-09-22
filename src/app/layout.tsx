@@ -13,8 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "price.lk — Sri Lanka price comparison",
-  description: "Compare prices across Sri Lankan online retailers before you buy.",
+  title: "SmartTech Finder Sri Lanka",
+  description:
+    "Find the right tech. Compare the price. Check availability. Find the store.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

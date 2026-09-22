@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import SearchResults from "./SearchResults";
+import SiteHeader from "./SiteHeader";
+import SiteFooter from "./SiteFooter";
 import { CATEGORIES } from "@/lib/categories";
 import { SELLERS } from "@/lib/scrapers";
 
@@ -15,21 +17,28 @@ export default async function Home({
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-black">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+      <SiteHeader />
+
+      <div className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
         <div className="mx-auto max-w-5xl px-4 py-6">
-          <Link href="/" className="text-xl font-bold text-zinc-900 dark:text-zinc-50">
-            price<span className="text-blue-600">.lk</span>
-          </Link>
-          <p className="mt-1 text-sm text-zinc-500">
-            Type a product — we browse Sri Lankan sellers live and show you the price.
-          </p>
+          {!query && (
+            <>
+              <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-50">
+                Find the right tech. Compare the price.
+              </h1>
+              <p className="mt-1 text-sm text-zinc-500">
+                Search phones, laptops, accessories and electronics from Sri Lankan stores
+                across the web.
+              </p>
+            </>
+          )}
           <form action="/" className="mt-4">
             <div className="relative">
               <input
                 type="text"
                 name="q"
                 defaultValue={q}
-                placeholder="e.g. Apple iPhone SE 2"
+                placeholder="Search phones, laptops, accessories and electronics…"
                 className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-4 py-3 pr-24 text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
@@ -58,11 +67,11 @@ export default async function Home({
           </div>
 
           <p className="mt-3 text-xs text-zinc-400">
-            Nothing is pre-loaded — every search checks {SELLERS.length} Sri Lankan seller sites
-            live, on the spot.
+            We check {SELLERS.length} Sri Lankan seller sites live on every search — nothing is
+            shown without being verified moments ago (or a few minutes ago from cache).
           </p>
         </div>
-      </header>
+      </div>
 
       <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
         {!query ? (
@@ -79,11 +88,7 @@ export default async function Home({
         )}
       </main>
 
-      <footer className="border-t border-zinc-200 dark:border-zinc-800 px-4 py-6 text-center text-xs text-zinc-400">
-        Prices are fetched live from seller sites and may change or be inaccurate — always
-        confirm the final price and availability on the seller&apos;s own site before buying.
-        price.lk is not affiliated with any seller listed.
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

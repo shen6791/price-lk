@@ -1,5 +1,9 @@
+import { after } from "next/server";
 import { scrapeAllSellers } from "@/lib/scrapers";
 import type { ScrapedPrice } from "@/lib/scrapers";
+import { upsertScrapedResults } from "@/lib/scrapers/upsert";
+import { getCached, setCached } from "@/lib/search-cache";
+import { logSearchQuery } from "@/lib/search-analytics";
 
 export type LiveResult = ScrapedPrice & { score: number };
 
@@ -38,13 +42,22 @@ function scoreMatch(name: string, query: string): number | null {
 }
 
 // Live-browses seller sites for the query and returns every individual
-// listing found, flattened into one sortable list — nothing is read from or
-// written to a database, and nothing is grouped into per-product cards, so
-// every price from every checked seller is visible in the same view.
+// listing found, flattened into one sortable list. Checks a short-lived
+// in-memory cache first (see search-cache.ts — best-effort, not
+// distributed) to avoid re-scraping the same query seconds apart, and
+// persists whatever it finds to Supabase afterwards (fire-and-forget via
+// `after()`, so it doesn't add to response time) so price history and
+// freshness data accumulate over time — see upsertScrapedResults.
 export async function liveSearch(query: string): Promise<{
   results: LiveResult[];
   listingCount: number;
+  fromCache: boolean;
 }> {
+  const cached = getCached(query);
+  if (cached) {
+    return { results: cached.results, listingCount: cached.listingCount, fromCache: true };
+  }
+
   const scraped = await scrapeAllSellers(query);
 
   const results = scraped
@@ -53,7 +66,13 @@ export async function liveSearch(query: string): Promise<{
       return score === null ? null : { ...r, score };
     })
     .filter((r): r is LiveResult => r !== null)
-    .sort((a, b) => b.score - a.score || a.price - b.price);
+    .sort((a, b) => b.score - a.score || a.price - b.price)
+    .slice(0, 60);
 
-  return { results: results.slice(0, 60), listingCount: scraped.length };
+  setCached(query, results, scraped.length);
+
+  after(() => upsertScrapedResults(scraped).catch(() => {}));
+  after(() => logSearchQuery(query, results.length).catch(() => {}));
+
+  return { results, listingCount: scraped.length, fromCache: false };
 }

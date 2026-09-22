@@ -4,10 +4,11 @@ import ResultsView from "./ResultsView";
 export default async function SearchResults({ q }: { q: string }) {
   let results: Awaited<ReturnType<typeof liveSearch>>["results"] = [];
   let listingCount = 0;
+  let fromCache = false;
   let failed = false;
 
   try {
-    ({ results, listingCount } = await liveSearch(q));
+    ({ results, listingCount, fromCache } = await liveSearch(q));
   } catch {
     failed = true;
   }
@@ -27,9 +28,11 @@ export default async function SearchResults({ q }: { q: string }) {
           Results for &quot;{q}&quot;
         </h2>
         <p className="text-xs text-zinc-400">
-          {listingCount > 0
-            ? `Checked ${listingCount} live listing${listingCount === 1 ? "" : "s"} across sellers just now`
-            : "No live listings found for this search"}
+          {listingCount === 0
+            ? "No live listings found for this search"
+            : fromCache
+              ? `${listingCount} listing${listingCount === 1 ? "" : "s"} — from a search moments ago`
+              : `Checked ${listingCount} live listing${listingCount === 1 ? "" : "s"} across sellers just now`}
         </p>
       </div>
 
