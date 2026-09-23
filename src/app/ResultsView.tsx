@@ -16,6 +16,28 @@ const SELLER_NAMES: Record<string, string> = {
 
 type SortMode = "relevance" | "price-asc" | "price-desc";
 
+function ConfidenceBadge({ confidence }: { confidence: LiveResult["confidence"] }) {
+  if (!confidence) return null; // dedicated site-specific scraper — no badge needed
+  if (confidence === "structured") {
+    return (
+      <span
+        title="Extracted from the page's own structured product data (JSON-LD/Schema.org)"
+        className="ml-1.5 rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500"
+      >
+        web
+      </span>
+    );
+  }
+  return (
+    <span
+      title="No structured product data found — price/stock guessed from page text and may be wrong. Verify on the store's site."
+      className="ml-1.5 rounded bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+    >
+      unverified
+    </span>
+  );
+}
+
 export default function ResultsView({ results }: { results: LiveResult[] }) {
   const [sort, setSort] = useState<SortMode>("relevance");
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -70,6 +92,15 @@ export default function ResultsView({ results }: { results: LiveResult[] }) {
         )}
       </div>
 
+      {visible.some((r) => r.confidence) && (
+        <p className="mb-2 text-xs text-zinc-400">
+          <span className="rounded bg-zinc-100 dark:bg-zinc-800 px-1 py-0.5 text-zinc-500">web</span>{" "}
+          = found via web search, structured data confirmed the price. {" "}
+          <span className="rounded bg-amber-100 dark:bg-amber-950/50 px-1 py-0.5 text-amber-700 dark:text-amber-400">unverified</span>{" "}
+          = guessed from page text, no structured data — double-check before trusting it.
+        </p>
+      )}
+
       {visible.length === 0 ? (
         <p className="text-zinc-500">Nothing in stock right now — try clearing the filter.</p>
       ) : (
@@ -90,6 +121,7 @@ export default function ResultsView({ results }: { results: LiveResult[] }) {
                   <td className="px-4 py-2 text-zinc-900 dark:text-zinc-100">{r.productName}</td>
                   <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
                     {SELLER_NAMES[r.sellerSlug] ?? r.sellerSlug}
+                    <ConfidenceBadge confidence={r.confidence} />
                   </td>
                   <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-100">
                     {formatLKR(r.price)}

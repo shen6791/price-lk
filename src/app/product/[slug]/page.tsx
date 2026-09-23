@@ -148,6 +148,14 @@ export default async function ProductPage({
                   <tr key={p.id}>
                     <td className="px-4 py-3 font-medium text-zinc-900 dark:text-zinc-100">
                       {p.seller?.name}
+                      {p.status === "needs_verification" && (
+                        <span
+                          title="Guessed from page text, no structured product data — double-check before trusting it"
+                          className="ml-1.5 rounded bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                        >
+                          unverified
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-zinc-900 dark:text-zinc-100">
                       {formatLKR(p.price)}

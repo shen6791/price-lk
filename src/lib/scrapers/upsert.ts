@@ -12,8 +12,10 @@ function slugify(s: string) {
 const STALE_MS = 6 * 60 * 60 * 1000; // re-check a seller's price at most every 6h
 
 // Persists freshly scraped results: creates products that don't exist yet,
-// and only writes a new price row when the price changed or the last check
-// is stale, so repeat searches for the same term don't spam the prices table.
+// auto-registers a seller/source row for domains discovered via web search
+// that aren't one of the dedicated scrapers, and only writes a new price
+// row when the price changed or the last check is stale, so repeat
+// searches for the same term don't spam the prices table.
 export async function upsertScrapedResults(results: ScrapedPrice[]) {
   if (results.length === 0) return;
   const supabase = createServiceClient();
@@ -22,8 +24,25 @@ export async function upsertScrapedResults(results: ScrapedPrice[]) {
   const sellerBySlug = new Map((sellers ?? []).map((s: any) => [s.slug, s.id]));
 
   for (const r of results) {
-    const sellerId = sellerBySlug.get(r.sellerSlug);
-    if (!sellerId) continue;
+    let sellerId = sellerBySlug.get(r.sellerSlug);
+    if (!sellerId) {
+      // Not one of the 4 dedicated scrapers — this is a domain discovered
+      // via web search (r.sellerSlug is a hostname). Register it as a
+      // source so its price history accumulates too, same as any other
+      // seller — see spec section 21: this is not a seller account, just
+      // an internal record to organize discovered information.
+      const { data: created } = await supabase
+        .from("sellers")
+        .upsert(
+          { name: r.sellerSlug, slug: r.sellerSlug, website: `https://${r.sellerSlug}` },
+          { onConflict: "slug", ignoreDuplicates: false }
+        )
+        .select("id")
+        .single();
+      if (!created) continue;
+      sellerId = created.id;
+      sellerBySlug.set(r.sellerSlug, sellerId);
+    }
 
     const slug = slugify(r.productName);
     if (!slug) continue;
@@ -56,7 +75,7 @@ export async function upsertScrapedResults(results: ScrapedPrice[]) {
         in_stock: r.inStock,
         product_url: r.productUrl,
         source: "scraper",
-        status: "verified",
+        status: r.confidence === "best-effort" ? "needs_verification" : "verified",
       });
     }
   }

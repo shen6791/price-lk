@@ -15,6 +15,7 @@ retailer websites, compares them, and links you to the original page to buy.
    fresh-install version).
 3. Copy `.env.local.example` to `.env.local` and fill in your project's URL
    and keys (Project Settings → API), plus an `ADMIN_PASSWORD` of your choice.
+   `BING_SEARCH_API_KEY` is optional — see "Web search layer" below.
 4. `npm install`
 5. `npm run dev` and open http://localhost:3000. Admin dashboard is at
    `/admin` (logs in with `ADMIN_PASSWORD`).
@@ -74,10 +75,6 @@ assuming something works:
   of stale listings or broken URLs. The only "background" work is
   `after()`, which just defers DB writes past the response — it's not a
   job queue.
-- **Search-provider abstraction.** There's no `SearchProvider` interface or
-  a real web-search API (Google/Bing) in the loop — each scraper talks
-  directly to one retailer's own search endpoint. See "How search works"
-  below for why, and what a real search-layer would need.
 - **Product normalization / canonical variant matching.** Each scraped
   listing is its own row; "Apple iPhone 15 128GB" and "Apple iPhone 15 –
   Apple Care Warranty" from two different sites are not recognized as the
@@ -109,18 +106,47 @@ at least one of the query's significant words to match (short words like
 by relevance, rather than being hidden — useful when nothing matches
 closely (e.g. a discontinued phone model no tracked seller stocks anymore).
 
-**On the "search-provider abstraction" from the fuller spec:** each current
-scraper (`src/lib/scrapers/*.ts`) talks directly to one retailer's own
-search endpoint (their WooCommerce `?s=`, their Shopify `/search/suggest.json`,
-Buyabans' `/search`). This is why coverage tops out at exactly the sites
-someone has written a scraper for — there's no general "search the web"
-step. A real web-search-provider layer (Google Custom Search API, Bing
-Search API, or similar) would let the system discover pages on retailers
-nobody's specifically coded for yet, at the cost of much noisier extraction
-(you'd need per-domain parsers anyway once you found a page). Worth
-building next if "every listing in Sri Lanka" is the actual goal, but it's
-a different, larger piece of work than adding one more site-specific
-scraper.
+## Web search layer (optional — needs an API key)
+
+The 4 dedicated scrapers (`celltronics.ts`, `wasi.ts`, `simplytek.ts`,
+`buyabans.ts`) each talk to one retailer's own search endpoint, so they're
+precise but capped at exactly those 4 sites. `src/lib/scrapers/web-search.ts`
+adds a 5th source that searches the open web and extracts from whatever
+pages come back, via a swappable `SearchProvider` interface
+(`src/lib/search-provider/types.ts`) — only a Bing Web Search API
+implementation exists today (`bing.ts`), but a Google CSE or SerpApi
+provider is a drop-in as long as it implements the same interface.
+
+**This only activates when `BING_SEARCH_API_KEY` is set.** Without it,
+`scrapeWebSearch()` returns `[]` immediately and the rest of the app is
+unaffected — this is intentional so the app works out of the box with no
+paid API required, and degrades safely if the key/quota ever runs out.
+
+**On accuracy — read this before trusting web-search results.** Unlike the
+4 dedicated scrapers (each hand-verified against that site's real page
+structure — see the Buyabans price bug fixed earlier in this project's
+history for what can go wrong even with a known structure), pages found via
+web search are unknown in advance. `src/lib/scrapers/generic.ts` extracts
+in two tiers:
+1. **Structured data** (JSON-LD/Schema.org `Product`/`Offer`) — reliable,
+   tagged `confidence: "structured"`, shown with a gray "web" badge.
+2. **Best-effort** — no structured data found, so it regexes for a
+   currency-prefixed number and common stock-status phrases in the page's
+   visible text. This is a guess and can be wrong (wrong number on the
+   page, a crossed-out original price instead of the sale price, a related
+   product's price, etc.). Tagged `confidence: "best-effort"`, shown with
+   an amber "unverified" badge and stored with `status = 'needs_verification'`
+   rather than `'verified'`.
+
+Both tiers are always labeled in the UI (`ResultsView.tsx`, the product
+page) — never presented with the same confidence as the dedicated scrapers.
+If you'd rather trade coverage for accuracy, delete the `extractBestEffort`
+fallback in `generic.ts` so only structured-data pages ever show up; the
+call site (`extractFromPage`) doesn't need to change.
+
+Sites already covered by a dedicated scraper are skipped in web-search
+results (`DEDICATED_DOMAINS` in `web-search.ts`) to avoid duplicate,
+lower-confidence rows for something already parsed precisely.
 
 Adding another retailer: drop a new file in `src/lib/scrapers/` that returns
 `ScrapedPrice[]`, add it to `scrapeAllSellers` in `scrapers/index.ts`, add
@@ -156,7 +182,11 @@ product's `/product/[slug]` page.
    a matching price drops below target.
 4. **More retailers**, especially Daraz.lk — biggest coverage lever, hardest
    technically (JS SPA + Cloudflare).
-5. **A real search-provider layer** — see "How search works" above.
+5. **Turn on the web-search layer** — set `BING_SEARCH_API_KEY` (see "Web
+   search layer" above); confirm the Bing Web Search API resource is still
+   available in the Azure portal (Microsoft has been retiring it in favor
+   of "Grounding with Bing Search" bundled into Azure AI Foundry — if it's
+   gone, swap in a Google CSE or SerpApi provider instead).
 6. **User accounts** (Supabase Auth is already in the stack via `@supabase/ssr`,
    just not wired to a login flow) — needed before "my saved searches/alerts"
    means anything beyond "whoever has the link."
